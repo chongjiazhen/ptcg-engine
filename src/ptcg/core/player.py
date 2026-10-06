@@ -47,6 +47,11 @@ class Player:
 
         self.hasPokemonDead = False  # knocked down during opponent's last turn
 
+        # Number of times the opening hand was reshuffled and redrawn (mulligans)
+        # during setup because it held no Basic Pokemon. Feeds the opponent's
+        # bonus-card rule (see _run_start_stage in envs.py).
+        self.mulligan_count = 0
+
         self.reward = Reward()
 
         # Action trajectory tracking for each turn
@@ -141,6 +146,7 @@ class Player:
         def can_play(card):
             return card.superType == SuperType.POKEMON and card.stage == Stage.BASIC
 
+        self.mulligan_count = 0
         while True:
             rng.shuffle(self.deck)
             self.hand = self.deck[:7]
@@ -148,6 +154,9 @@ class Player:
             self.left = self.deck[13:]
             if any(can_play(card) for card in self.hand):
                 break
+            # No Basic Pokemon in the opening hand -> mulligan: shuffle this hand
+            # back in and redraw. Each iteration past the first is one mulligan.
+            self.mulligan_count += 1
 
         def set_cards_position(cards, position):
             for idx, card in enumerate(cards):

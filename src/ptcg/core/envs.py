@@ -36,7 +36,7 @@ from loguru import logger
 
 from ptcg.core.action import Action, PlayPokemonAction
 from ptcg.core.card import PokemonCard
-from ptcg.core.enums import Coin, PlayerId, PokemonPosition, Stage
+from ptcg.core.enums import CardPosition, Coin, PlayerId, PokemonPosition, Stage
 from ptcg.core.exceptions import GameTermination, InvalidActionError
 from ptcg.core.player import Player
 from ptcg.core.recorder import GameRecorder
@@ -284,6 +284,11 @@ class PokemonTCG:
             )
 
         self.start_stage = False
+        # Both players have finished setup (active chosen). Apply the mulligan
+        # bonus-card rule: the opponent may draw one extra card per mulligan you
+        # took. If both players mulliganed simultaneously, neither gets a bonus
+        # (rule: reveal and restart setup without granting extra card draws).
+        self._grant_mulligan_bonus_cards()
         self._determine_first_player()
         self._log_game_start()
 
@@ -302,6 +307,46 @@ class PokemonTCG:
         player_name = f"{self.gamestate.turn}"[9:]
         if self.recorder:
             self.recorder.record_game_start(player_name, self.gamestate)
+
+    def _grant_mulligan_bonus_cards(self) -> None:
+        """Apply the mulligan bonus-card rule after both players finish setup.
+
+        For every mulligan (opening-hand reshuffle with no Basic Pokemon) a
+        player took, their opponent may draw one extra card -- but only when
+        the opponent did NOT also mulligan. If both players mulliganed
+        simultaneously they reveal and restart setup without any bonus draws.
+        The opponent's choice of fewer/none is ignored: drawing is the
+        dominant strategy, so we always draw up to the full bonus.
+        """
+        p1, p2 = self.gamestate.player1, self.gamestate.player2
+        m1, m2 = getattr(p1, "mulligan_count", 0), getattr(p2, "mulligan_count", 0)
+        if m1 > 0 and m2 > 0:
+            return  # simultaneous mulligan -> no bonus for either
+        if m1 > 0:
+            self._draw_bonus_cards(p2, m1)
+        if m2 > 0:
+            self._draw_bonus_cards(p1, m2)
+
+    def _draw_bonus_cards(self, player: Player, count: int) -> None:
+        """Move `count` cards from the top of `player`'s deck into their hand.
+        Guards against an exhausted deck (deck-out) -- stops early if none left.
+
+        Re-indexes both zones afterwards so card.index still matches each card's
+        position in the list -- the StateChecker validates that invariant, and a
+        raw pop(0) off the deck leaves the remaining deck cards one index off.
+        """
+        for _ in range(max(0, count)):
+            if not player.left:
+                break
+            card = player.left.pop(0)
+            card.cardPosition = CardPosition.HAND
+            player.hand.append(card)
+        for idx, card in enumerate(player.hand, start=1):
+            card.cardPosition = CardPosition.HAND
+            card.index = idx
+        for idx, card in enumerate(player.left, start=1):
+            card.cardPosition = CardPosition.LEFT
+            card.index = idx
 
     def _yield_initial_state(self) -> tuple:
         """Create and return the initial game state tuple."""
