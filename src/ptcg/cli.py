@@ -7,6 +7,7 @@ import random
 import sys
 from collections.abc import Sequence
 
+from ptcg.console.policy import pass_or_first
 from ptcg.core.action import Action
 from ptcg.core.envs import PokemonTCG
 
@@ -66,9 +67,22 @@ def build_play_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--opponent-policy",
-        choices=("first", "random"),
+        choices=("first", "random", "pass"),
         default="random",
-        help="Opponent action policy. Defaults to random.",
+        help="Opponent action policy; pass ends the turn whenever legal. Defaults to random.",
+    )
+    order = parser.add_mutually_exclusive_group()
+    order.add_argument("--go-first", action="store_true", help="Force the human to go first.")
+    order.add_argument("--go-second", action="store_true", help="Force the human to go second.")
+    parser.add_argument(
+        "--item-lock-turns",
+        type=_turn_list,
+        default=(),
+        help="Comma-separated human turn numbers on which Item cards are hidden, e.g. 2,4.",
+    )
+    parser.add_argument(
+        "--goldfish-log",
+        help="Append one goldfish.csv row to this file when the game ends or you quit.",
     )
     parser.add_argument(
         "--record",
@@ -90,9 +104,21 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _turn_list(value: str) -> tuple[int, ...]:
+    try:
+        turns = tuple(int(part) for part in value.split(",") if part.strip())
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be comma-separated integers") from exc
+    if not turns or any(turn <= 0 for turn in turns):
+        raise argparse.ArgumentTypeError("turn numbers must be positive integers")
+    return turns
+
+
 def select_action(actions: Sequence[Action], policy: str, rng: random.Random) -> Action:
     if policy == "random":
         return rng.choice(actions)
+    if policy == "pass":
+        return pass_or_first(actions)
     return actions[0]
 
 
@@ -152,6 +178,9 @@ def run_play(args: argparse.Namespace) -> int:
         max_steps=args.max_steps,
         record=args.record,
         verbose=args.verbose,
+        go_first=True if args.go_first else False if args.go_second else None,
+        item_lock_turns=args.item_lock_turns,
+        goldfish_log=args.goldfish_log,
     )
     result = run_interactive(config, RichTerminal())
     return result.exit_code

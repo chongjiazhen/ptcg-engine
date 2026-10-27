@@ -1,0 +1,29 @@
+Pokémon: 19
+4 Dreepy TWM 128
+4 Drakloak TWM 129
+3 Dragapult ex TWM 200
+2 Munkidori TWM 95
+2 Budew ASC 16
+1 Dunsparce TEF 128
+1 Dudunsparce TEF 129
+1 Meowth ex POR 62
+1 Fezandipiti ex SFA 92
+
+Trainer: 32
+4 Lillie's Determination ASC 192
+3 Boss's Orders PAL 265
+2 Crispin SCR 133
+1 Rosa's Encouragement POR 84
+1 Judge POR 76
+4 Buddy-Buddy Poffin TEF 144
+4 Poké Pad POR 81
+4 Crushing Hammer POR 71
+3 Ultra Ball PAF 91
+3 Night Stretcher SFA 61
+1 Unfair Stamp TWM 165
+2 Risky Ruins MEG 127
+
+Energy: 9
+3 Basic {R} Energy SVE 2
+3 Basic {P} Energy SVE 5
+3 Basic {D} Energy SVE 7

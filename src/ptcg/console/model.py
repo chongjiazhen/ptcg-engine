@@ -16,6 +16,9 @@ class PlayConfig:
     max_steps: int = 1000
     record: bool = False
     verbose: bool = False
+    go_first: bool | None = None
+    item_lock_turns: tuple[int, ...] = ()
+    goldfish_log: str | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,7 @@ class DecisionFrame:
     events: tuple[str, ...]
     actions: tuple[ActionView, ...]
     prompt: ChoicePromptView | None = None
+    notices: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

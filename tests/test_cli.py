@@ -67,3 +67,24 @@ def test_main_keeps_legacy_simulation_dispatch(monkeypatch):
 def test_play_parser_rejects_a_non_positive_step_limit():
     with pytest.raises(SystemExit):
         cli.build_play_parser().parse_args(["--max-steps", "0"])
+
+
+def test_main_passes_goldfish_flags_into_play_config(monkeypatch):
+    captured = {}
+
+    def fake_run_interactive(config, terminal):
+        captured["config"] = config
+        return SessionResult(status="finished", steps=1, reward=0.0)
+
+    monkeypatch.setattr("ptcg.console.run_interactive", fake_run_interactive)
+
+    cli.main(
+        ["play", "--opponent-policy", "pass", "--go-first", "--item-lock-turns", "2,4",
+         "--goldfish-log", "g.csv"]
+    )
+
+    config = captured["config"]
+    assert config.opponent_policy == "pass"
+    assert config.go_first is True
+    assert config.item_lock_turns == (2, 4)
+    assert config.goldfish_log == "g.csv"

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import dataclasses
 import random
 from collections.abc import Mapping, Sequence
 from functools import cache
 from types import MappingProxyType
 from typing import Any, Protocol
 
+from ptcg.console import goldfish
 from ptcg.console.model import (
     ActionView,
     CardView,
@@ -21,6 +23,7 @@ from ptcg.console.model import (
     SessionResult,
     Terminal,
 )
+from ptcg.console.policy import pass_or_first
 from ptcg.core.action import Action, ChooseCardAction, ChooseCardActionSpace
 from ptcg.core.card_registry import registry
 from ptcg.core.enums import ActionType, CardPosition, PlayerId
@@ -63,11 +66,46 @@ def run_interactive(
     env: MatchEnvironment | None = None,
 ) -> SessionResult:
     """Run one human-vs-policy match through the terminal seam."""
-    if config.opponent_policy not in {"first", "random"}:
-        raise ValueError("opponent_policy must be either 'first' or 'random'")
+    if config.opponent_policy not in {"first", "random", "pass"}:
+        raise ValueError("opponent_policy must be one of 'first', 'random' or 'pass'")
     if config.max_steps <= 0:
         raise ValueError("max_steps must be greater than zero")
 
+    tracker = goldfish.GoldfishTracker(config.item_lock_turns)
+    if env is None and config.go_first is not None:
+        requested = config.seed
+        found = goldfish.find_seed(
+            requested,
+            config.go_first,
+            lambda seed: PokemonTCG(
+                seed=seed,
+                deck1=config.deck,
+                deck2=config.opponent_deck,
+                verbose=config.verbose,
+                record_game=False,
+            ),
+        )
+        config = dataclasses.replace(config, seed=found)
+        order = "first" if config.go_first else "second"
+        tracker.notices.append(
+            f"Seed {found} (searched from {requested}) so you go {order}; "
+            f"rerun with --seed {found} to reproduce this hand."
+        )
+
+    result = _run_session(config, terminal, env, tracker)
+    if config.goldfish_log and (result.status == "finished" or result.reason == "quit"):
+        prompt_note = getattr(terminal, "prompt_note", None)
+        note = prompt_note() if prompt_note else ""
+        goldfish.append_row(config.goldfish_log, tracker.record(note))
+    return result
+
+
+def _run_session(
+    config: PlayConfig,
+    terminal: Terminal,
+    env: MatchEnvironment | None,
+    tracker: goldfish.GoldfishTracker,
+) -> SessionResult:
     match = env or PokemonTCG(
         seed=config.seed,
         deck1=config.deck,
@@ -108,12 +146,22 @@ def run_interactive(
 
         owner = actions[0].playerId
         if owner == PlayerId.PLAYER1:
+            observation = match.observe(PlayerId.PLAYER1)
+            human_turn = tracker.observe(observation, _mulligans(match))
+            actions, lock_note = goldfish.filter_item_locked(
+                actions, human_turn, config.item_lock_turns
+            )
+            if not lock_note and _engine_item_locked(match):
+                lock_note = goldfish.ITEM_LOCK_NOTE
+            notices = [*tracker.notices, *([lock_note] if lock_note else [])]
+            tracker.notices.clear()
             frame = build_decision_frame(
                 config,
-                match.observe(PlayerId.PLAYER1),
+                observation,
                 actions,
                 info,
                 pending_events,
+                notices=notices,
             )
             try:
                 action = _read_human_action(terminal, frame, actions)
@@ -152,8 +200,10 @@ def run_interactive(
                 terminal.show_result(result)
                 return result
             pending_events = []
+            tracker.record_action(action)
         else:
             action = _select_policy_action(actions, config.opponent_policy, policy_rng)
+            tracker.opponent_acted(action)
 
         pending_events.append(describe_action(action))
         try:
@@ -266,6 +316,7 @@ def build_decision_frame(
     actions: Sequence[Action],
     info: Mapping[str, Any],
     events: Sequence[str],
+    notices: Sequence[str] = (),
 ) -> DecisionFrame:
     """Build a detached frame containing only information safe for the human."""
     human = _player_view(observation["self"], reveal_hand=True)
@@ -327,6 +378,7 @@ def build_decision_frame(
         events=tuple(events),
         actions=action_views,
         prompt=prompt_view,
+        notices=tuple(notices),
     )
 
 
@@ -418,7 +470,19 @@ def _select_policy_action(
 ) -> Action:
     if policy == "random":
         return rng.choice(actions)
+    if policy == "pass":
+        return pass_or_first(actions)
     return actions[0]
+
+
+def _engine_item_locked(match: Any) -> bool:
+    player = getattr(getattr(match, "gamestate", None), "player1", None)
+    return bool(getattr(player, "itemLocked", False))
+
+
+def _mulligans(match: Any) -> int:
+    player = getattr(getattr(match, "gamestate", None), "player1", None)
+    return int(getattr(player, "mulligan_count", 0) or 0)
 
 
 def describe_action(action: Action) -> str:

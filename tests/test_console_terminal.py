@@ -81,7 +81,7 @@ def _terminal(inputs: list[str], *, width: int = 80):
     # https://rich.readthedocs.io/en/latest/console.html#capturing-output
     output = StringIO()
     iterator = iter(inputs)
-    console = Console(file=output, color_system=None, width=width)
+    console = Console(file=output, color_system=None, width=width, legacy_windows=False)
     terminal = RichTerminal(console, read_line=lambda _prompt: next(iterator))
     return terminal, output
 

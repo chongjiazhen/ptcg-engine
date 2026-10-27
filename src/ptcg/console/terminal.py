@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -11,6 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from ptcg.console import goldfish
 from ptcg.console.model import (
     ActionView,
     CardView,
@@ -41,11 +43,22 @@ class RichTerminal:
         console: Console | None = None,
         *,
         read_line: Callable[[str], str] | None = None,
+        rng: random.Random | None = None,
     ) -> None:
         self.console = console or Console()
         self._read_line = read_line
+        self._rng = rng
+
+    def prompt_note(self) -> str:
+        """Ask for the one-line note that ends a goldfish row."""
+        try:
+            return self._input("[bold cyan]note>[/] ").strip()
+        except EOFError:
+            return ""
 
     def choose(self, frame: DecisionFrame) -> HumanIntent:
+        if self._rng is None:
+            self._rng = random.Random(frame.seed)
         self._render_frame(frame)
         while True:
             raw = self._input("[bold cyan]ptcg>[/] ").strip()
@@ -63,6 +76,12 @@ class RichTerminal:
                 continue
             if lowered == "help":
                 self._render_help(frame.prompt is not None)
+                continue
+            if lowered == "flip":
+                self.console.print(f"Coin flip: {goldfish.flip(self._rng)}")
+                continue
+            if lowered.split()[0:1] == ["roll"]:
+                self._roll(raw.split()[1:])
                 continue
             if lowered.startswith("inspect"):
                 self._inspect(frame, raw.split()[1:])
@@ -82,6 +101,13 @@ class RichTerminal:
                 continue
 
             self.show_error("Enter an action number or type help.")
+
+    def _roll(self, args: list[str]) -> None:
+        if len(args) > 1 or (args and not (args[0].isdigit() and int(args[0]) >= 1)):
+            self.show_error("Usage: roll [sides]")
+            return
+        sides = int(args[0]) if args else 6
+        self.console.print(f"d{sides}: {goldfish.roll(self._rng, sides)}")
 
     def show_error(self, message: str) -> None:
         self.console.print(Text(message, style="bold red"))
@@ -118,6 +144,8 @@ class RichTerminal:
             )
         )
         self.console.rule(style="dim")
+        for notice in frame.notices:
+            self.console.print(Text(notice, style="bold yellow"))
         if frame.events:
             self.console.print(Text("Since your last decision", style="dim"))
             for event in frame.events:
@@ -243,7 +271,7 @@ class RichTerminal:
             command = "<candidate numbers>" if choosing_cards else "<action number>"
             self.console.print(
                 Text(
-                    f"Commands: {command} · board · hand · inspect <area> <number> · help · quit",
+                    f"Commands: {command} · board · hand · inspect <area> <number> · flip/roll · help · quit",
                     style="dim",
                 )
             )
@@ -258,6 +286,8 @@ class RichTerminal:
         self.console.print("  inspect bench <n>        Inspect your Benched Pokemon")
         self.console.print("  inspect opponent <area>  Inspect an opponent field card")
         self.console.print("  inspect stadium [n]      Inspect a Stadium")
+        self.console.print("  flip                     Flip a coin (seeded)")
+        self.console.print("  roll [n]                 Roll a die: d6, or dN (seeded)")
         self.console.print("  quit                     Leave the current game")
 
     def _parse_candidate_selection(
