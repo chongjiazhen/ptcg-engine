@@ -86,6 +86,19 @@ def test_drakloak_recon_directive_unavailable_after_use():
     assert [a for a in drakloak.get_actions(state) if isinstance(a, UseAbilityAction)] == []
 
 
+def test_drakloak_recon_directive_unavailable_with_empty_deck():
+    drakloak = make_card("TWM-129")
+    state = make_state(PlayerZones(left=[], active=[drakloak]))
+
+    assert [a for a in drakloak.get_actions(state) if isinstance(a, UseAbilityAction)] == []
+
+
+def test_drakloak_recon_directive_is_once_per_turn_in_player_bookkeeping():
+    drakloak = make_card("TWM-129")
+
+    assert drakloak.ability[0].onceUsedPerTurn is True
+
+
 def test_drakloak_dragon_headbutt_damages_opponent():
     drakloak = make_card("TWM-129")
     drakloak.energy = [CardType.FIRE, CardType.PSYCHIC]

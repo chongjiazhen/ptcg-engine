@@ -39,6 +39,9 @@ class TWM200DragapultEX(PokemonCard):
         self.energy = []
         self.attachment = []
 
+        self.evolveFrom = ["Drakloak", "Dreepy"]
+        self.evolved = []
+
         self.attacks = [
             Attack(
                 {"name": "Jet Headbutt", "damage": 70, "cost": [CardType.COLORLESS], "text": ""}

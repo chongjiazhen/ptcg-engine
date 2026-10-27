@@ -56,7 +56,7 @@ class TWM129Drakloak(PokemonCard):
                 {
                     "name": "Recon Directive",
                     "abilityType": AbilityType.ACTIVE_ABILITY,
-                    "onceUsedPerTurn": False,
+                    "onceUsedPerTurn": True,
                     "text": "Once during your turn, you may look at the top 2 "
                     "cards of your deck and put 1 of them into your hand. "
                     "Put the other card on the bottom of your deck.",
@@ -76,7 +76,11 @@ class TWM129Drakloak(PokemonCard):
                     )
 
         for ability in self.ability:
-            if not self.abilityUsed and not current_player(state).onceUsedTurn[ability.name]:
+            if (
+                not self.abilityUsed
+                and not current_player(state).onceUsedTurn.get(ability.name, False)
+                and len(current_player(state).left) >= 1
+            ):
                 actions.extend([UseAbilityAction(state.turn, self, ability)])
         return actions
 
