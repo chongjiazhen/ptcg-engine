@@ -48,7 +48,7 @@ class MEG127RiskyRuins(StadiumCard):
 
     def get_actions(self, state):
         player = current_player(state)
-        if not player.firstTurn and self in player.hand:
+        if self in player.hand:
             return [PutStadiumAction(player.id, self)]
         return []
 

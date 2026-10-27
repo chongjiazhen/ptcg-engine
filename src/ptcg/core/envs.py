@@ -314,10 +314,9 @@ class PokemonTCG:
 
         self.first_player = starter
         self.gamestate.turn = starter
-        if starter == PlayerId.PLAYER1:
-            self.gamestate.player2.supporterPlayedTurn = False
-        else:
-            self.gamestate.player1.supporterPlayedTurn = False
+        second = self.gamestate.player2 if starter == PlayerId.PLAYER1 else self.gamestate.player1
+        second.supporterPlayedTurn = False
+        second.wentFirst = False
 
         # The starter draws at the start of turn 1 like every other turn
         # (they still cannot play a Supporter or attack on it).

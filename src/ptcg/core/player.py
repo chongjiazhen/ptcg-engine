@@ -46,6 +46,9 @@ class Player:
         self.onceUsedGame = self.get_once_used_game()
 
         self.firstTurn = True
+        # False for the player who goes second: only the starter is barred from
+        # attacking on their first turn (set in PokemonTCG._determine_first_player).
+        self.wentFirst = True
 
         self.hasPokemonDead = False  # knocked down during opponent's last turn
 
@@ -224,8 +227,8 @@ class Player:
             # Filter out UseAbilityAction for active Pokémon if suppressed by opponent
             if card in self.active and active_suppressed:
                 card_actions = [a for a in card_actions if not isinstance(a, UseAbilityAction)]
-            if self.firstTurn:
-                # Allow specific attacks on first turn for certain cards
+            if self.firstTurn and self.wentFirst:
+                # Starter cannot attack on turn 1. Allow specific attacks on first turn for certain cards
                 filtered_actions = []
                 for action in card_actions:
                     if isinstance(action, AttackAction):

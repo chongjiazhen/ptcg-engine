@@ -40,6 +40,15 @@ def test_risky_ruins_text_and_stadium_play():
     assert ruins.cardPosition == CardPosition.STADIUM
 
 
+def test_risky_ruins_is_playable_on_first_turn():
+    ruins = make_card("MEG-127")
+    state = make_state(PlayerZones(hand=[ruins]))
+
+    assert state.player1.firstTurn is True
+    actions = ruins.get_actions(state)
+    assert len(actions) == 1 and isinstance(actions[0], PutStadiumAction)
+
+
 @pytest.mark.card("MEG-127")
 @pytest.mark.card_coverage("MEG-127", "reduce_action", "damage")
 def test_risky_ruins_puts_two_counters_on_own_benched_non_dark_basic():
