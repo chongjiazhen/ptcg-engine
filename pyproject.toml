@@ -39,7 +39,7 @@ ptcg = "ptcg.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ptcg = ["decks/*.txt"]
+ptcg = ["decks/*.txt", "data/*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

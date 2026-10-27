@@ -71,9 +71,27 @@ def build_play_parser() -> argparse.ArgumentParser:
         default="random",
         help="Opponent action policy; pass ends the turn whenever legal. Defaults to random.",
     )
-    order = parser.add_mutually_exclusive_group()
-    order.add_argument("--go-first", action="store_true", help="Force the human to go first.")
-    order.add_argument("--go-second", action="store_true", help="Force the human to go second.")
+    parser.add_argument(
+        "--seat",
+        choices=("first", "second", "flip", "choice"),
+        default="choice",
+        help="Turn order: forced first/second, a coin flip, or a coin for who chooses. "
+        "Defaults to choice.",
+    )
+    parser.add_argument(
+        "--opponent-choice",
+        choices=("first", "second", "random"),
+        default="first",
+        help="What the opponent picks when it wins the flip in choice mode. Defaults to first.",
+    )
+    parser.add_argument(
+        "--go-first", dest="seat", action="store_const", const="first",
+        help="Deprecated alias for --seat first.",
+    )
+    parser.add_argument(
+        "--go-second", dest="seat", action="store_const", const="second",
+        help="Deprecated alias for --seat second.",
+    )
     parser.add_argument(
         "--item-lock-turns",
         type=_turn_list,
@@ -83,6 +101,21 @@ def build_play_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--goldfish-log",
         help="Append one goldfish.csv row to this file when the game ends or you quit.",
+    )
+    parser.add_argument(
+        "--marks",
+        type=_code_list,
+        default=None,
+        help=(
+            "Reject the human deck unless every card carries one of these regulation marks "
+            "(comma list, e.g. H,I,J; 'standard' = the current Standard marks)."
+        ),
+    )
+    parser.add_argument(
+        "--sets",
+        type=_code_list,
+        default=None,
+        help="Reject the human deck unless every card comes from one of these set codes (comma list, e.g. TWM,MEG).",
     )
     parser.add_argument(
         "--record",
@@ -102,6 +135,45 @@ def _positive_int(value: str) -> int:
     if parsed <= 0:
         raise argparse.ArgumentTypeError("must be greater than zero")
     return parsed
+
+
+def _code_list(value: str) -> frozenset[str]:
+    codes = frozenset(part.strip() for part in value.split(",") if part.strip())
+    if not codes:
+        raise argparse.ArgumentTypeError("expected a comma-separated list")
+    return codes
+
+
+def check_deck_legality(
+    deck: str | None, marks: frozenset[str] | None, sets: frozenset[str] | None
+) -> int:
+    """Validate the human deck against --marks / --sets. Returns 0 when legal, 2 otherwise.
+
+    Prints one line per violation and one per reprint note (an old printing credited
+    through a current same-name reprint). No filters means no check.
+    """
+    if marks is None and sets is None:
+        return 0
+    from ptcg.core.envs import DEFAULT_DECK
+    from ptcg.legality import explain_deck, standard_marks
+    from ptcg.utils.load_deck import load_deck
+
+    if marks is not None and "standard" in marks:
+        marks = frozenset(standard_marks()) | (marks - {"standard"})
+    cards = load_deck(deck or DEFAULT_DECK).cards
+    violations, reprints = explain_deck(
+        [card.id for card in cards],
+        set(marks) if marks is not None else None,
+        set(sets) if sets is not None else None,
+    )
+    for note in reprints:
+        print(f"note: {note}")
+    for violation in violations:
+        print(f"illegal: {violation}")
+    if violations:
+        print(f"Deck rejected: {len(violations)} card(s) fail the --marks/--sets filter.")
+        return 2
+    return 0
 
 
 def _turn_list(value: str) -> tuple[int, ...]:
@@ -170,6 +242,9 @@ def run(args: argparse.Namespace) -> int:
 def run_play(args: argparse.Namespace) -> int:
     from ptcg.console import PlayConfig, RichTerminal, run_interactive
 
+    legality = check_deck_legality(args.deck, args.marks, args.sets)
+    if legality:
+        return legality
     config = PlayConfig(
         deck=args.deck,
         opponent_deck=args.opponent_deck,
@@ -178,7 +253,8 @@ def run_play(args: argparse.Namespace) -> int:
         max_steps=args.max_steps,
         record=args.record,
         verbose=args.verbose,
-        go_first=True if args.go_first else False if args.go_second else None,
+        seat=args.seat,
+        opponent_choice=args.opponent_choice,
         item_lock_turns=args.item_lock_turns,
         goldfish_log=args.goldfish_log,
     )
@@ -190,6 +266,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = list(argv) if argv is not None else sys.argv[1:]
     if arguments and arguments[0] == "play":
         return run_play(build_play_parser().parse_args(arguments[1:]))
+    if arguments and arguments[0] == "cards":
+        from ptcg.legality_cli import run_cards
+
+        return run_cards(arguments[1:])
 
     parser = build_parser()
     args = parser.parse_args(arguments)

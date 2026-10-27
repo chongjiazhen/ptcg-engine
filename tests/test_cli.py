@@ -79,12 +79,45 @@ def test_main_passes_goldfish_flags_into_play_config(monkeypatch):
     monkeypatch.setattr("ptcg.console.run_interactive", fake_run_interactive)
 
     cli.main(
-        ["play", "--opponent-policy", "pass", "--go-first", "--item-lock-turns", "2,4",
+        ["play", "--opponent-policy", "pass", "--seat", "flip", "--opponent-choice", "random", "--item-lock-turns", "2,4",
          "--goldfish-log", "g.csv"]
     )
 
     config = captured["config"]
     assert config.opponent_policy == "pass"
-    assert config.go_first is True
+    assert (config.seat, config.opponent_choice) == ("flip", "random")
     assert config.item_lock_turns == (2, 4)
     assert config.goldfish_log == "g.csv"
+
+
+def test_play_parser_parses_marks_and_sets_as_code_sets():
+    args = cli.build_play_parser().parse_args(["--marks", "H,I,J", "--sets", "TWM, MEG"])
+
+    assert args.marks == frozenset({"H", "I", "J"})
+    assert args.sets == frozenset({"TWM", "MEG"})
+    assert cli.build_play_parser().parse_args([]).marks is None
+
+
+def test_check_deck_legality_passes_29678_under_standard_marks(capsys):
+    assert cli.check_deck_legality("dragapult_29678", frozenset({"standard"}), None) == 0
+    out = capsys.readouterr().out
+    assert "legal via MEG-114" in out
+    assert "illegal:" not in out
+
+
+def test_check_deck_legality_rejects_29678_under_a_set_filter(capsys):
+    assert cli.check_deck_legality("dragapult_29678", None, frozenset({"TWM"})) == 2
+    out = capsys.readouterr().out
+    assert "illegal: ASC-016" in out
+    assert "Deck rejected" in out
+
+
+def test_main_play_stops_before_the_session_when_the_deck_is_illegal(monkeypatch):
+    called = []
+    monkeypatch.setattr("ptcg.console.run_interactive", lambda config, terminal: called.append(1))
+
+    exit_code = cli.main(["play", "--deck", "dragapult_29678", "--sets", "TWM"])
+
+    assert exit_code == 2
+    assert called == []
+
