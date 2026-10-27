@@ -284,3 +284,112 @@ def test_dict_parser_is_strict(bad):
 
 def test_intent_error_is_a_value_error():
     assert issubclass(IntentError, ValueError)
+
+
+# --- targeted live-engine round trips for kinds the random walk never reaches -------------
+
+
+def _round_trip_all(state, actions, player=PlayerId.PLAYER1):
+    intents = [intent_of(a, state) for a in actions]
+    for action, intent in zip(actions, intents):
+        assert resolve(intent, actions, state, player=player) is action, intent
+        assert Intent.parse(intent.format()) == intent, intent
+        assert sum(1 for other in intents if other == intent) == 1, intent
+    return intents
+
+
+def _builder():
+    from tests.helpers.cards import make_card
+    from tests.helpers.state_builder import PlayerZones, make_state
+
+    return make_card, PlayerZones, make_state
+
+
+def test_ability_round_trip_drakloak_and_munkidori():
+    from ptcg.core.enums import CardType
+
+    make_card, Zones, make_state = _builder()
+    drakloak = make_card("TWM-129")
+    munkidori = make_card("TWM-095")
+    dark = make_card("SVE-007")
+    munkidori.energy = [CardType.DARK]
+    munkidori.attachment = [dark]
+    state = make_state(
+        Zones(active=[make_card("TWM-128")], bench=[drakloak, munkidori], left=[make_card("TWM-128")]),
+        Zones(active=[make_card("TWM-128")]),
+    )
+    actions = state.player1.get_actions(state)
+    intents = _round_trip_all(state, actions)
+    abilities = {(i.source, i.name) for i in intents if i.kind == "ability"}
+    assert ("B1", drakloak.ability[0].name) in abilities
+    assert ("B2", munkidori.ability[0].name) in abilities
+    typed = {i.format() for i in intents if i.kind == "ability"}
+    assert f"ability B1 {drakloak.ability[0].name}" in typed
+    # Name-less typed form resolves while the Pokemon has a single ability.
+    bare = Intent.parse("ability B1")
+    assert resolve(bare, actions, state).ability.name == drakloak.ability[0].name
+    # A name the card does not print never resolves.
+    assert resolve(Intent("ability", "B1", name="Nope"), actions, state) is None
+
+
+def test_retreat_round_trip_dreepy_with_energy_and_budew_at_zero_cost():
+    from ptcg.core.enums import CardType
+
+    make_card, Zones, make_state = _builder()
+    dreepy = make_card("TWM-128")
+    dreepy.energy = [CardType.FIRE]
+    state = make_state(Zones(active=[dreepy], bench=[make_card("TWM-128")]), Zones(active=[make_card("TWM-128")]))
+    actions = state.player1.get_actions(state)
+    intents = _round_trip_all(state, actions)
+    assert Intent("retreat", "A1") in intents
+    assert Intent.parse("retreat") == Intent("retreat", "A1")
+    assert resolve(Intent.parse("retreat"), actions, state) is next(
+        a for a in actions if a.actionType == ActionType.RETREAT_ACTION
+    )
+
+    budew = make_card("ASC-016")
+    state = make_state(Zones(active=[budew], bench=[make_card("TWM-128")]), Zones(active=[make_card("TWM-128")]))
+    actions = state.player1.get_actions(state)
+    assert Intent("retreat", "A1") in _round_trip_all(state, actions)
+
+    # Unaffordable retreat (no energy on Dreepy) is not offered, so the intent resolves None.
+    bare = make_state(Zones(active=[make_card("TWM-128")], bench=[make_card("TWM-128")]), Zones())
+    assert resolve(Intent("retreat", "A1"), bare.player1.get_actions(bare), bare) is None
+
+
+def test_stadium_round_trip_play_from_hand_and_use_discard_forms():
+    from ptcg.core.action import DiscardStadiumAction, UseStadiumAction
+
+    make_card, Zones, make_state = _builder()
+    ruins = make_card("MEG-127")
+    state = make_state(Zones(hand=[ruins], active=[make_card("TWM-128")]), Zones(active=[make_card("TWM-128")]))
+    actions = state.player1.get_actions(state)
+    intents = _round_trip_all(state, actions)
+    assert Intent("stadium", "H1") in intents
+    assert Intent.parse("stadium H1") in intents
+
+    # Risky Ruins offers no use/discard action once in play, so exercise S1 with
+    # synthetic offered actions on a board that holds the stadium.
+    in_play = make_card("MEG-127")
+    state = make_state(Zones(active=[make_card("TWM-128")]), Zones(active=[make_card("TWM-128")]))
+    state.stadium.append(in_play)
+    offered = [UseStadiumAction(PlayerId.PLAYER1, in_play), DiscardStadiumAction(PlayerId.PLAYER1, in_play)]
+    assert [i.format() for i in _round_trip_all(state, offered)] == ["stadium S1", "discard S1"]
+    assert resolve(Intent("stadium", "S2"), offered, state) is None
+    assert [e.kind for e in menu_for("S1", state)] == ["stadium", "discard", "pass"]
+
+
+def test_tool_round_trip_rigid_band():
+    make_card, Zones, make_state = _builder()
+    band = make_card("MEW-165")
+    state = make_state(
+        Zones(hand=[band], active=[make_card("MEW-017")], bench=[make_card("MEW-017")]),
+        Zones(active=[make_card("TWM-128")]),
+    )
+    actions = state.player1.get_actions(state)
+    intents = _round_trip_all(state, actions)
+    assert Intent("tool", "H1", "A1") in intents and Intent("tool", "H1", "B1") in intents
+    assert Intent.parse("tool H1 B1") in intents
+    assert Intent("tool", "H1", "B2") not in intents
+    assert resolve(Intent("tool", "H1", "B2"), actions, state) is None
+    assert [e.kind for e in menu_for("H1", state)] == ["tool", "pass"]
