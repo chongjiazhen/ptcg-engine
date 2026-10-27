@@ -1,6 +1,7 @@
 import pytest
 
 from ptcg.core.action import UseItemAction
+from ptcg.core.enums import CardTag
 from tests.helpers.cards import make_card
 from tests.helpers.generator_driver import drive_choices
 from tests.helpers.state_builder import PlayerZones, make_state
@@ -99,3 +100,59 @@ def test_secret_box_unavailable_with_fewer_than_three_other_hand_cards():
     state2 = make_state(PlayerZones(hand=[card, make_card("SVE-002")]))
 
     assert card.get_actions(state2) == []
+
+
+STAMP_TEXT = (
+    "You can use this card only if any of your Pokémon were Knocked Out during your "
+    "opponent's last turn.\nEach player shuffles their hand into their deck. "
+    "Then, you draw 5 cards, and your opponent draws 2 cards."
+)
+
+
+def _stamp_deck(n):
+    return [make_card("SVE-002") for _ in range(n)]
+
+
+@pytest.mark.card("TWM-165")
+def test_unfair_stamp_text_and_ace_spec_tag():
+    stamp = make_card("TWM-165")
+    assert stamp.text == STAMP_TEXT
+    assert stamp.cardTag == CardTag.ACE_SPEC
+
+
+@pytest.mark.card("TWM-165")
+def test_unfair_stamp_unavailable_without_knockout_last_turn():
+    stamp = make_card("TWM-165")
+    state = make_state(PlayerZones(hand=[stamp], left=_stamp_deck(10)))
+    state.player1.hasPokemonDead = False
+
+    assert stamp.get_actions(state) == []
+
+
+@pytest.mark.card("TWM-165")
+def test_unfair_stamp_shuffles_both_hands_and_draws_five_and_two(monkeypatch):
+    monkeypatch.setattr("ptcg.utils.utils.random.shuffle", lambda _cards: None)
+    stamp = make_card("TWM-165")
+    my_hand = [make_card("SVE-004"), make_card("SVE-005")]
+    opp_hand = [make_card("SVE-007"), make_card("SVE-008"), make_card("SVE-004")]
+    my_deck = _stamp_deck(8)
+    opp_deck = _stamp_deck(6)
+    state = make_state(
+        PlayerZones(hand=[stamp] + my_hand, left=my_deck),
+        PlayerZones(hand=opp_hand, left=opp_deck),
+    )
+    state.player1.hasPokemonDead = True
+
+    actions = stamp.get_actions(state)
+    assert len(actions) == 1 and isinstance(actions[0], UseItemAction)
+
+    list(stamp.reduce_action(actions[0], state) or [])
+
+    assert len(state.player1.hand) == 5
+    assert len(state.player2.hand) == 2
+    assert stamp in state.player1.discard
+    assert len(state.player1.left) == 8 + 2 - 5
+    assert len(state.player2.left) == 6 + 3 - 2
+    assert sorted(c.id for c in state.player1.hand + state.player1.left) == sorted(
+        c.id for c in my_deck + my_hand
+    )
