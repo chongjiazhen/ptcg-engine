@@ -6,7 +6,8 @@ during game actions, eliminating code duplication across reducer functions.
 """
 
 from ptcg.core.ability import PassiveAbility
-from ptcg.core.enums import AbilityTrigger
+from ptcg.core.action import PlayPokemonAction
+from ptcg.core.enums import AbilityTrigger, PokemonPosition
 from ptcg.utils.utils import (
     current_active,
     current_all_pokemon,
@@ -122,3 +123,24 @@ def trigger_retreat_abilities(action, state) -> None:
     # Trigger stadium's RETREAT abilities
     for card in state.stadium:
         trigger_passive_ability(card, action, state, AbilityTrigger.RETREAT)
+
+
+def trigger_bench_abilities(action, state) -> None:
+    """
+    Trigger stadium passive abilities for a Basic Pokemon entering the Bench.
+
+    Args:
+        action: A PlayPokemonAction targeting PokemonPosition.BENCH
+        state: Current game state
+    """
+    for card in state.stadium:
+        trigger_passive_ability(card, action, state, AbilityTrigger.BENCH_ENTRY)
+
+
+def notify_bench_entry(player, card, state) -> None:
+    """Fire bench-entry hooks for a Basic Pokemon just put onto player's Bench.
+
+    Shared by the hand-to-bench play action and effects that put Pokemon onto
+    the Bench directly (e.g. Buddy-Buddy Poffin).
+    """
+    trigger_bench_abilities(PlayPokemonAction(player.id, card, PokemonPosition.BENCH), state)

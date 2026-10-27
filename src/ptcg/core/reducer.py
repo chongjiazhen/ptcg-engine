@@ -17,7 +17,11 @@ from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
-from ptcg.core.ability_handler import trigger_attack_abilities, trigger_retreat_abilities
+from ptcg.core.ability_handler import (
+    notify_bench_entry,
+    trigger_attack_abilities,
+    trigger_retreat_abilities,
+)
 from ptcg.core.action import (
     AttachEnergyAction,
     ChooseCardAction,
@@ -455,6 +459,7 @@ def reduce_play_pokemon_action(
             card.position = PokemonPosition.BENCH
             card.cardPosition = CardPosition.BENCH
             card.index = len(player.bench)
+            notify_bench_entry(player, card, state)
         else:
             raise InvalidCardPositionError(
                 f"Invalid position for playing Pokemon: {action.position}"

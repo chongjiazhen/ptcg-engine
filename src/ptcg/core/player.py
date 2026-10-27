@@ -39,6 +39,8 @@ class Player:
         self.stadiumUsedTurn = False
         self.stadiumPlayedTurn = False
         self.retreatTurn = False
+        # Item lock (e.g. Budew's Itchy Pollen): cleared when this player's turn ends
+        self.itemLocked = False
 
         self.onceUsedTurn = self.get_once_used_turn()
         self.onceUsedGame = self.get_once_used_game()
@@ -67,6 +69,7 @@ class Player:
         self.stadiumUsedTurn = False
         self.stadiumPlayedTurn = False
         self.retreatTurn = False
+        self.itemLocked = False
 
         # Archive current turn actions and reset for next turn
         if self.current_turn_actions:
@@ -186,6 +189,7 @@ class Player:
                 and not self.energyPlayedTurn
                 or isinstance(hand_card, TrainerCard)
                 and hand_card.trainerType != TrainerType.SUPPORTER
+                and not (self.itemLocked and hand_card.trainerType == TrainerType.ITEM)
                 or isinstance(hand_card, TrainerCard)
                 and hand_card.trainerType == TrainerType.SUPPORTER
                 and not self.supporterPlayedTurn

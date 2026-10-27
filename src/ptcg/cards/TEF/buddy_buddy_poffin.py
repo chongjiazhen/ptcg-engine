@@ -1,3 +1,4 @@
+from ptcg.core.ability_handler import notify_bench_entry
 from ptcg.core.action import UseItemAction, choose_card_actions
 from ptcg.core.card import ItemCard
 from ptcg.core.enums import *
@@ -54,6 +55,8 @@ class TEF144BuddyBuddyPoffin(ItemCard):
                     card.index = idx + 1
                 for idx, card in enumerate(player.bench):
                     card.index = idx + 1
+                for card in chosen_card:
+                    notify_bench_entry(player, card, state)
             else:
                 print(chosen_card)
                 print(player.left)

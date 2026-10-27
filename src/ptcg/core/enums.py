@@ -172,3 +172,4 @@ class AbilityTrigger(Enum):
     ATTACKED = 2
     RETREAT = 3
     OTHER = 4
+    BENCH_ENTRY = 5
