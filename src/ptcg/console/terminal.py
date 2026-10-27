@@ -49,6 +49,18 @@ class RichTerminal:
         self._read_line = read_line
         self._rng = rng
 
+    def choose_seat(self) -> str:
+        """Ask the flip winner for a turn order."""
+        while True:
+            answer = self._input(
+                "[bold cyan]You won the flip. Go first or second? [1/2][/] "
+            ).strip().lower()
+            if answer in {"1", "first"}:
+                return "first"
+            if answer in {"2", "second"}:
+                return "second"
+            self.show_error("Enter 1 for first or 2 for second.")
+
     def prompt_note(self) -> str:
         """Ask for the one-line note that ends a goldfish row."""
         try:

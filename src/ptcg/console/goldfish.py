@@ -21,7 +21,6 @@ CSV_COLUMNS = (
 ).split(",")
 
 ITEM_LOCK_NOTE = "Items locked this turn (simulated Budew)"
-SEED_SEARCH_CAP = 200
 
 _SEARCH_NAMES = {"Buddy-Buddy Poffin": "Poffin", "Poké Pad": "Pad", "Ultra Ball": "UB"}
 
@@ -121,29 +120,47 @@ def append_row(path: str, record: GoldfishRecord, today: str | None = None) -> i
     return hand
 
 
-def find_seed(
-    start_seed: int, go_first: bool, make_env: Callable[[int], Any], cap: int = SEED_SEARCH_CAP
-) -> int:
-    """First seed in [start, start+cap) whose coin gives the human the wanted turn order.
+@dataclass(frozen=True)
+class SeatDecision:
+    first_player: PlayerId
+    notice: str
 
-    The engine flips the coin after both setup choices and exposes no override,
-    so each candidate is played through setup with first-listed choices (the coin
-    does not depend on them).
-    """
-    for seed in range(start_seed, start_seed + cap):
-        env = make_env(seed)
-        _obs, _reward, _done, info = env.reset()
-        for _ in range(2):
-            actions = info["raw_available_actions"]
-            if isinstance(actions, ChooseCardActionSpace):
-                action = actions.action_for_candidate_indices([0])
-            else:
-                action = actions[0]
-            _obs, _reward, _done, info = env.step(action)
-        if (env.gamestate.turn == PlayerId.PLAYER1) == go_first:
-            return seed
-    wanted = "first" if go_first else "second"
-    raise ValueError(f"No seed in {start_seed}..{start_seed + cap - 1} lets the human go {wanted}")
+
+def _seat_words(first_player: PlayerId) -> str:
+    return "You go first." if first_player == PlayerId.PLAYER1 else "You go second."
+
+
+def decide_seat(
+    mode: str,
+    opponent_choice: str,
+    rng: random.Random,
+    ask_human: Callable[[], str] | None,
+) -> SeatDecision:
+    """Resolve who takes turn 1: forced, a direct coin, or a coin for the choice."""
+    if mode in ("first", "second"):
+        player = PlayerId.PLAYER1 if mode == "first" else PlayerId.PLAYER2
+        return SeatDecision(player, f"Seat forced: {_seat_words(player)}")
+    coin = flip(rng)
+    if mode == "flip":
+        player = PlayerId.PLAYER1 if coin == "heads" else PlayerId.PLAYER2
+        return SeatDecision(player, f"Coin flip: {coin}. {_seat_words(player)}")
+    if mode != "choice":
+        raise ValueError(f"unknown seat mode: {mode}")
+    if coin == "heads":
+        if ask_human is None:
+            raise ValueError("choice mode needs a way to ask the human")
+        picked = ask_human()
+        player = PlayerId.PLAYER1 if picked == "first" else PlayerId.PLAYER2
+        return SeatDecision(
+            player, f"Coin flip: {coin}. You won the flip and chose {picked}. {_seat_words(player)}"
+        )
+    pick = rng.choice(("first", "second")) if opponent_choice == "random" else opponent_choice
+    player = PlayerId.PLAYER2 if pick == "first" else PlayerId.PLAYER1
+    return SeatDecision(
+        player,
+        f"Coin flip: {coin}. The opponent won the flip and chose to go {pick}. "
+        f"{_seat_words(player)}",
+    )
 
 
 def _is_supporter(card: dict) -> bool:
@@ -162,6 +179,7 @@ class GoldfishTracker:
         self.mulligans = 0
         self.active = ""
         self.seat = "F"
+        self._seat_known = False
         self._opening_seen = False
         self._started = False
         self._turn_key: object = None
@@ -169,11 +187,15 @@ class GoldfishTracker:
         self._items: dict[int, list[str]] = {}
         self._supporter_turns: set[int] = set()
 
+    def set_first_player(self, first_player: PlayerId) -> None:
+        self._seat_known = True
+        self.seat = "F" if first_player == PlayerId.PLAYER1 else "S"
+
     def opponent_acted(self, action: Any) -> None:
         self._turn_key = None
-        if self._started or action.actionType == ActionType.CHOOSE_CARD_ACTION:
+        if self._seat_known or self._started or action.actionType == ActionType.CHOOSE_CARD_ACTION:
             return
-        self.seat = "S"
+        self.seat = "S"  # fallback for envs that do not expose first_player
 
     def observe(self, observation: dict, mulligans: int = 0) -> int:
         """Register a human decision point; return the human's current turn number."""

@@ -16,7 +16,8 @@ class PlayConfig:
     max_steps: int = 1000
     record: bool = False
     verbose: bool = False
-    go_first: bool | None = None
+    seat: str = "choice"
+    opponent_choice: str = "first"
     item_lock_turns: tuple[int, ...] = ()
     goldfish_log: str | None = None
 

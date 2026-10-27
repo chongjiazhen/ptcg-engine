@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import random
 from collections.abc import Mapping, Sequence
 from functools import cache
@@ -72,24 +71,22 @@ def run_interactive(
         raise ValueError("max_steps must be greater than zero")
 
     tracker = goldfish.GoldfishTracker(config.item_lock_turns)
-    if env is None and config.go_first is not None:
-        requested = config.seed
-        found = goldfish.find_seed(
-            requested,
-            config.go_first,
-            lambda seed: PokemonTCG(
-                seed=seed,
-                deck1=config.deck,
-                deck2=config.opponent_deck,
-                verbose=config.verbose,
-                record_game=False,
-            ),
+    if env is None:
+        decision = goldfish.decide_seat(
+            config.seat,
+            config.opponent_choice,
+            random.Random(config.seed),
+            getattr(terminal, "choose_seat", None),
         )
-        config = dataclasses.replace(config, seed=found)
-        order = "first" if config.go_first else "second"
-        tracker.notices.append(
-            f"Seed {found} (searched from {requested}) so you go {order}; "
-            f"rerun with --seed {found} to reproduce this hand."
+        tracker.set_first_player(decision.first_player)
+        tracker.notices.append(decision.notice)
+        env = PokemonTCG(
+            seed=config.seed,
+            deck1=config.deck,
+            deck2=config.opponent_deck,
+            verbose=config.verbose,
+            record_game=config.record,
+            first_player=decision.first_player,
         )
 
     result = _run_session(config, terminal, env, tracker)
@@ -129,6 +126,9 @@ def _run_session(
         return result
     steps = 0
     pending_events = list(info.get("auto_executed", []))
+    started = getattr(match, "first_player", None)
+    if started is not None:
+        tracker.set_first_player(started)
 
     while not done and steps < config.max_steps:
         actions: Sequence[Action] = info.get("raw_available_actions", [])
