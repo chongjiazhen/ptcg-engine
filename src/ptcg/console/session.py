@@ -8,7 +8,6 @@ from functools import cache
 from types import MappingProxyType
 from typing import Any, Protocol
 
-from ptcg.console import goldfish
 from ptcg.console.model import (
     ActionView,
     CardView,
@@ -65,184 +64,33 @@ def run_interactive(
     env: MatchEnvironment | None = None,
 ) -> SessionResult:
     """Run one human-vs-policy match through the terminal seam."""
-    if config.opponent_policy not in {"first", "random", "pass"}:
-        raise ValueError("opponent_policy must be one of 'first', 'random' or 'pass'")
-    if config.max_steps <= 0:
-        raise ValueError("max_steps must be greater than zero")
+    from ptcg.console.stepper import Stepper  # stepper imports this module
 
-    tracker = goldfish.GoldfishTracker(config.item_lock_turns)
-    if env is None:
-        decision = goldfish.decide_seat(
-            config.seat,
-            config.opponent_choice,
-            random.Random(config.seed),
-            getattr(terminal, "choose_seat", None),
-        )
-        tracker.set_first_player(decision.first_player)
-        tracker.notices.append(decision.notice)
-        env = PokemonTCG(
-            seed=config.seed,
-            deck1=config.deck,
-            deck2=config.opponent_deck,
-            verbose=config.verbose,
-            record_game=config.record,
-            first_player=decision.first_player,
-        )
+    stepper = Stepper(
+        config,
+        env=env,
+        ask_seat=getattr(terminal, "choose_seat", None),
+        env_factory=PokemonTCG,
+    )
+    while stepper.result is None:
+        try:
+            action = _read_human_action(terminal, stepper.frame, stepper.actions)
+        except EOFError:
+            stepper.abort("eof")
+            break
+        except KeyboardInterrupt:
+            stepper.abort("interrupt")
+            break
+        if action is None:
+            stepper.abort("quit")
+            break
+        stepper.submit(action)
 
-    result = _run_session(config, terminal, env, tracker)
+    result = stepper.result
+    terminal.show_result(result)
     if config.goldfish_log and (result.status == "finished" or result.reason == "quit"):
         prompt_note = getattr(terminal, "prompt_note", None)
-        note = prompt_note() if prompt_note else ""
-        goldfish.append_row(config.goldfish_log, tracker.record(note))
-    return result
-
-
-def _run_session(
-    config: PlayConfig,
-    terminal: Terminal,
-    env: MatchEnvironment | None,
-    tracker: goldfish.GoldfishTracker,
-) -> SessionResult:
-    match = env or PokemonTCG(
-        seed=config.seed,
-        deck1=config.deck,
-        deck2=config.opponent_deck,
-        verbose=config.verbose,
-        record_game=config.record,
-    )
-    policy_rng = random.Random(config.seed)
-    try:
-        _observation, reward, done, info = match.reset()
-    except KeyboardInterrupt:
-        result = _finish_aborted(
-            match,
-            status="aborted",
-            reason="interrupt",
-            steps=0,
-            reward=0,
-            events=(),
-        )
-        terminal.show_result(result)
-        return result
-    steps = 0
-    pending_events = list(info.get("auto_executed", []))
-    started = getattr(match, "first_player", None)
-    if started is not None:
-        tracker.set_first_player(started)
-
-    while not done and steps < config.max_steps:
-        actions: Sequence[Action] = info.get("raw_available_actions", [])
-        if not actions:
-            result = _finish_aborted(
-                match,
-                status="error",
-                reason="no_available_actions",
-                steps=steps,
-                reward=reward,
-                events=pending_events,
-            )
-            terminal.show_result(result)
-            return result
-
-        owner = actions[0].playerId
-        if owner == PlayerId.PLAYER1:
-            observation = match.observe(PlayerId.PLAYER1)
-            human_turn = tracker.observe(observation, _mulligans(match))
-            actions, lock_note = goldfish.filter_item_locked(
-                actions, human_turn, config.item_lock_turns
-            )
-            if not lock_note and _engine_item_locked(match):
-                lock_note = goldfish.ITEM_LOCK_NOTE
-            notices = [*tracker.notices, *([lock_note] if lock_note else [])]
-            tracker.notices.clear()
-            frame = build_decision_frame(
-                config,
-                observation,
-                actions,
-                info,
-                pending_events,
-                notices=notices,
-            )
-            try:
-                action = _read_human_action(terminal, frame, actions)
-            except EOFError:
-                result = _finish_aborted(
-                    match,
-                    status="aborted",
-                    reason="eof",
-                    steps=steps,
-                    reward=reward,
-                    events=pending_events,
-                )
-                terminal.show_result(result)
-                return result
-            except KeyboardInterrupt:
-                result = _finish_aborted(
-                    match,
-                    status="aborted",
-                    reason="interrupt",
-                    steps=steps,
-                    reward=reward,
-                    events=pending_events,
-                )
-                terminal.show_result(result)
-                return result
-
-            if action is None:
-                result = _finish_aborted(
-                    match,
-                    status="aborted",
-                    reason="quit",
-                    steps=steps,
-                    reward=reward,
-                    events=pending_events,
-                )
-                terminal.show_result(result)
-                return result
-            pending_events = []
-            tracker.record_action(action)
-        else:
-            action = _select_policy_action(actions, config.opponent_policy, policy_rng)
-            tracker.opponent_acted(action)
-
-        pending_events.append(describe_action(action))
-        try:
-            _observation, reward, done, info = match.step(action)
-        except KeyboardInterrupt:
-            result = _finish_aborted(
-                match,
-                status="aborted",
-                reason="interrupt",
-                steps=steps,
-                reward=reward,
-                events=pending_events,
-            )
-            terminal.show_result(result)
-            return result
-        pending_events.extend(info.get("auto_executed", []))
-        steps += 1
-
-    if done:
-        winner = info.get("winner") or match.winner
-        result = SessionResult(
-            status="finished",
-            steps=steps,
-            reward=float(reward),
-            winner=_player_name(winner),
-            reason=info.get("termination_reason"),
-            events=tuple(pending_events),
-        )
-    else:
-        result = _finish_aborted(
-            match,
-            status="stopped",
-            reason="max_steps",
-            steps=steps,
-            reward=reward,
-            events=pending_events,
-        )
-
-    terminal.show_result(result)
+        stepper.finish(prompt_note() if prompt_note else "")
     return result
 
 
@@ -257,19 +105,9 @@ def _read_human_action(
             return None
 
         if isinstance(intent, SelectCandidates):
-            if isinstance(actions, ChooseCardActionSpace):
-                try:
-                    return actions.action_for_candidate_indices(intent.indices)
-                except (IndexError, ValueError) as exc:
-                    terminal.show_error(str(exc))
-                    continue
-
-            if not isinstance(actions[0], ChooseCardAction):
-                terminal.show_error("Card candidates are not expected for this decision.")
-                continue
             try:
-                return _listed_choice_for_candidate_indices(actions, intent.indices)
-            except (IndexError, TypeError, ValueError) as exc:
+                return choice_for_indices(actions, intent.indices)
+            except ValueError as exc:
                 terminal.show_error(str(exc))
                 continue
 
@@ -285,6 +123,18 @@ def _read_human_action(
             return actions[intent.index]
 
         terminal.show_error("Unsupported terminal input.")
+
+
+def choice_for_indices(actions: Sequence[Action], indices: Sequence[int]) -> Action:
+    """Resolve candidate indices to an offered card choice; ValueError when not available."""
+    try:
+        if isinstance(actions, ChooseCardActionSpace):
+            return actions.action_for_candidate_indices(indices)
+        if not isinstance(actions[0], ChooseCardAction):
+            raise ValueError("Card candidates are not expected for this decision.")
+        return _listed_choice_for_candidate_indices(actions, indices)
+    except (IndexError, TypeError) as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _listed_choice_for_candidate_indices(
@@ -473,16 +323,6 @@ def _select_policy_action(
     if policy == "pass":
         return pass_or_first(actions)
     return actions[0]
-
-
-def _engine_item_locked(match: Any) -> bool:
-    player = getattr(getattr(match, "gamestate", None), "player1", None)
-    return bool(getattr(player, "itemLocked", False))
-
-
-def _mulligans(match: Any) -> int:
-    player = getattr(getattr(match, "gamestate", None), "player1", None)
-    return int(getattr(player, "mulligan_count", 0) or 0)
 
 
 def describe_action(action: Action) -> str:
