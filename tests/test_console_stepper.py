@@ -88,7 +88,10 @@ def test_finish_writes_one_csv_row(tmp_path):
     stepper = Stepper(_config(goldfish_log=str(log)))
     stepper.finish("note-x")
     lines = log.read_text(encoding="utf-8").splitlines()
-    assert len(lines) == 2 and lines[1].endswith("note-x")
+    assert len(lines) == 2
+    header, row = lines[0].split(","), lines[1].split(",")
+    assert row[header.index("note")] == "note-x"
+    assert header[-1] == "hints" and row[-1] == "0"
 
 
 def test_hint_counts_once_per_decision():

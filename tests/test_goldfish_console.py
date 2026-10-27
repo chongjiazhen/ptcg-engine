@@ -66,7 +66,7 @@ def test_roll_defaults_to_d6_and_honours_sides():
 
 
 def test_csv_columns_are_the_goldfish_header_in_order():
-    assert list(goldfish.CSV_COLUMNS) == CSV_HEADER
+    assert list(goldfish.CSV_COLUMNS) == CSV_HEADER + ["hints"]
 
 
 def test_append_row_writes_fifteen_columns_and_increments_hand(tmp_path):
@@ -82,16 +82,16 @@ def test_append_row_writes_fifteen_columns_and_increments_hand(tmp_path):
     rows = list(csv.reader(path.read_text().splitlines()))
     assert rows[-1] == [
         "2026-10-28", "7", "J", "S", "Budew", "1", "2", "1", "Pad+Poffin",
-        "0", "1", "", "1", "", "n, with comma",
+        "0", "1", "", "1", "", "n, with comma", "0",
     ]
-    assert len(rows[-1]) == 15
+    assert len(rows[-1]) == 16
 
 
 def test_append_row_starts_at_hand_one_for_a_new_file(tmp_path):
     path = tmp_path / "new.csv"
     goldfish.append_row(str(path), goldfish.GoldfishRecord(), today="2026-10-28")
     rows = list(csv.reader(path.read_text().splitlines()))
-    assert rows[0] == CSV_HEADER and rows[1][1] == "1"
+    assert rows[0] == CSV_HEADER + ["hints"] and rows[1][1] == "1"
 
 
 def test_milestones_from_stub_observations():
@@ -295,3 +295,38 @@ def test_tracker_counts_human_turns_and_takes_seat_from_first_player():
     other = goldfish.GoldfishTracker()
     other.set_first_player(PlayerId.PLAYER1)
     assert other.record().seat == "F"
+
+
+def test_hints_is_the_last_csv_column():
+    assert goldfish.CSV_COLUMNS[-1] == "hints"
+    assert list(goldfish.CSV_COLUMNS[:-1]) == CSV_HEADER
+
+
+def test_goldfish_record_hints_defaults_to_zero():
+    assert goldfish.GoldfishRecord().hints == 0
+
+
+def test_append_row_writes_hints_last(tmp_path):
+    path = tmp_path / "hints.csv"
+    goldfish.append_row(str(path), goldfish.GoldfishRecord(note="n", hints=3), today="2026-10-28")
+    rows = list(csv.reader(path.read_text().splitlines()))
+    assert rows[0][-1] == "hints"
+    assert len(rows[1]) == len(goldfish.CSV_COLUMNS)
+    assert rows[1][-1] == "3" and rows[1][-2] == "n"
+
+    goldfish.append_row(str(path), goldfish.GoldfishRecord(), today="2026-10-28")
+    assert list(csv.reader(path.read_text().splitlines()))[2][-1] == "0"
+
+
+def test_old_shape_file_still_appends_cleanly(tmp_path):
+    path = tmp_path / "old.csv"
+    old = ",".join(CSV_HEADER) + "\n2026-10-27,6,J,F,Dreepy,0,1,0,none,1,1,0,0,D,x\n"
+    path.write_text(old)
+    record = goldfish.GoldfishRecord(note="new", hints=2)
+    hand = goldfish.append_row(str(path), record, today="2026-10-28")
+    text = path.read_text()
+    assert hand == 7
+    assert text.startswith(old)  # existing header and rows untouched
+    rows = list(csv.reader(text.splitlines()))
+    assert len(rows) == 3 and len(rows[1]) == 15
+    assert rows[2][1] == "7" and rows[2][-1] == "2" and rows[2][-2] == "new"

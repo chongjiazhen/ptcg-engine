@@ -17,7 +17,7 @@ from ptcg.core.enums import ActionType, PlayerId
 
 CSV_COLUMNS = (
     "date,hand,var,seat,active,mulligans,supporters_in_7,t1_two_dreepy_or_dreepy_budew,"
-    "t1_search,t2_drakloak,t2_supporter,t3_attacker_rp,lock_variation,decide,note"
+    "t1_search,t2_drakloak,t2_supporter,t3_attacker_rp,lock_variation,decide,note,hints"
 ).split(",")
 
 ITEM_LOCK_NOTE = "Items locked this turn (simulated Budew)"
@@ -85,6 +85,7 @@ class GoldfishRecord:
     t3_attacker_rp: int | None = None
     lock_variation: int = 0
     note: str = ""
+    hints: int = 0
 
 
 def _blank(value: object) -> str:
@@ -108,7 +109,7 @@ def append_row(path: str, record: GoldfishRecord, today: str | None = None) -> i
         today or date.today().isoformat(), hand, "J", record.seat, record.active,
         record.mulligans, record.supporters_in_7, _blank(record.t1_two_dreepy_or_dreepy_budew),
         _blank(record.t1_search), _blank(record.t2_drakloak), _blank(record.t2_supporter),
-        _blank(record.t3_attacker_rp), record.lock_variation, "", record.note,
+        _blank(record.t3_attacker_rp), record.lock_variation, "", record.note, record.hints,
     ]
     with target.open("a", encoding="utf-8", newline="") as handle:
         if needs_newline:
