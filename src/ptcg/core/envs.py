@@ -52,6 +52,7 @@ from ptcg.utils.utils import (
     current_player,
     flip_coin,
     judge_termination,
+    move_cards,
 )
 
 DEFAULT_DECK = "charizard_ex"
@@ -88,6 +89,7 @@ class PokemonTCG:
     winner: PlayerId | None
     cur_available_actions: Sequence[Action]
     reducer: Generator[Any, Any, Any]
+    first_player: PlayerId | None
 
     def __init__(
         self,
@@ -99,6 +101,7 @@ class PokemonTCG:
         record_game: bool = True,
         invalid_action_policy: Literal["raise", "random"] = "raise",
         expose_full_state: bool = False,
+        first_player: PlayerId | None = None,
     ):
         if invalid_action_policy not in ("raise", "random"):
             raise ValueError(
@@ -117,6 +120,11 @@ class PokemonTCG:
         self.record_game = record_game
         self.invalid_action_policy = invalid_action_policy
         self.expose_full_state = expose_full_state
+        # None = decide by coin flip in the start stage; otherwise the forced starter.
+        # After reset() this is the starter once known (immediately when forced,
+        # after both opening Actives are chosen when the coin decides).
+        self._first_player_override = first_player
+        self.first_player = first_player
         self.state_checker = StateChecker()
 
         if verbose:
@@ -194,6 +202,7 @@ class PokemonTCG:
         self.gamestate.player2.shuffle(self.rng)
 
         self.start_stage = True
+        self.first_player = self._first_player_override
 
     def _init_generator(self) -> None:
         """Initialize the main game loop generator."""
@@ -295,13 +304,32 @@ class PokemonTCG:
         # Don't return anything - let the main loop yield the initial state
 
     def _determine_first_player(self) -> None:
-        """Determine which player goes first via coin flip."""
-        if flip_coin(self.gamestate) == Coin.HEAD:
-            self.gamestate.turn = PlayerId.PLAYER1
+        """Determine which player goes first (forced, else coin flip) and draw their turn-1 card."""
+        if self._first_player_override is not None:
+            starter = self._first_player_override
+        elif flip_coin(self.gamestate) == Coin.HEAD:
+            starter = PlayerId.PLAYER1
+        else:
+            starter = PlayerId.PLAYER2
+
+        self.first_player = starter
+        self.gamestate.turn = starter
+        if starter == PlayerId.PLAYER1:
             self.gamestate.player2.supporterPlayedTurn = False
         else:
-            self.gamestate.turn = PlayerId.PLAYER2
             self.gamestate.player1.supporterPlayedTurn = False
+
+        # The starter draws at the start of turn 1 like every other turn
+        # (they still cannot play a Supporter or attack on it).
+        player = current_player(self.gamestate)
+        if player.left:
+            move_cards(
+                player.left[0],
+                (player.id, CardPosition.LEFT),
+                (player.id, CardPosition.HAND),
+                self.gamestate,
+            )
+            self.gamestate.auto_events.append(f"{player.id.name} drew a card for turn 1.")
 
     def _log_game_start(self) -> None:
         player_name = f"{self.gamestate.turn}"[9:]
