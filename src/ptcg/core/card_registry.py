@@ -30,7 +30,7 @@ class CardRegistry:
             if py_file.name == "__init__.py":
                 continue
             rel = py_file.relative_to(CARDS_DIR)
-            module_name = "ptcg.cards." + str(rel.with_suffix("")).replace("/", ".")
+            module_name = "ptcg.cards." + ".".join(rel.with_suffix("").parts)
 
             try:
                 module = importlib.import_module(module_name)
