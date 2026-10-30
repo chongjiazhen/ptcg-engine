@@ -24,7 +24,9 @@ class POR081PokePad(ItemCard):
         )
 
     def get_actions(self, state):
-        return [UseItemAction(state.turn, self)]
+        if current_player(state).left:  # nothing to search with an empty deck
+            return [UseItemAction(state.turn, self)]
+        return []
 
     def reduce_action(self, action, state):
         if not isinstance(action, UseItemAction):

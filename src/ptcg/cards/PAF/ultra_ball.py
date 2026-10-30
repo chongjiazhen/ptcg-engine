@@ -21,7 +21,7 @@ class PAF091UltraBall(ItemCard):
     def get_actions(self, state):
         actions = []
         player = current_player(state)
-        if len(player.hand) >= 3:
+        if len(player.hand) >= 3 and player.left:  # needs 2 other cards and a deck to search
             actions.append(UseItemAction(state.turn, self))
 
         return actions

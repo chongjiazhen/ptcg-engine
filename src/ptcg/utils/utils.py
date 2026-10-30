@@ -193,18 +193,19 @@ def check_energy(cost: list[CardType], energy: list[CardType]) -> bool:
     """
     check energy for attack or retreat
     """
-    cost.sort(key=lambda card: card.value, reverse=True)
-    energy.sort(key=lambda card: card.value, reverse=True)
-
-    i, j = 0, 0
-    while i < len(cost):
-        if j == len(energy):
-            break
-        if energy[j] == cost[i] or cost[i] == CardType.COLORLESS:
-            i += 1
-        j += 1
-
-    return i == len(cost)
+    # Typed costs consume a matching energy each; colorless costs consume whatever is left.
+    # (The previous single-pass greedy let a Dark energy block a [P][C] cost when the
+    # Dark sorted ahead of the Psychic.)
+    pool = list(energy)
+    colorless = 0
+    for c in cost:
+        if c == CardType.COLORLESS:
+            colorless += 1
+        elif c in pool:
+            pool.remove(c)
+        else:
+            return False
+    return len(pool) >= colorless
 
 
 def check_evolve(evolved_card: PokemonCard, state: State) -> list[PokemonCard]:

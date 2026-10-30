@@ -133,3 +133,57 @@ def test_dunsparce_dig_costs_two_colorless():
     dunsparce.energy.append(CardType.FIRE)
     names = sorted(a.attack.name for a in _of(state.player1.get_actions(state), AttackAction))
     assert names == ["Dig", "Gnaw"]
+
+
+def test_adrena_brain_source_must_be_damaged_and_moves_counters_not_remaining_hp():
+    from tests.helpers.generator_driver import drive_choices
+
+    munkidori = make_card("TWM-095")
+    munkidori.firstTurnPlayed = False
+    dark = make_card("SVE-007")
+    munkidori.attachment = [dark]
+    munkidori.energy = list(dark.provides)
+    healthy, hurt = _dreepy(), _dreepy()
+    hurt.hp -= 20  # two counters
+    target = _dreepy()
+    state = make_state(
+        PlayerZones(active=[healthy], bench=[munkidori, hurt]),
+        PlayerZones(active=[target]),
+    )
+    action = _of(state.player1.get_actions(state), UseAbilityAction)[0]
+    gen = munkidori.reduce_action(action, state)
+    infos = drive_choices(gen, [lambda info: [hurt], lambda info: [target]])
+    assert infos[0]["prompt"].candidates == [hurt]  # the undamaged Dreepy is not offered
+    assert hurt.hp == 70 and target.hp == 50  # 2 counters moved, not 3
+
+
+def test_colorless_cost_is_paid_by_whatever_energy_is_left():
+    from ptcg.utils.utils import check_energy
+
+    assert check_energy([CardType.PSYCHIC, CardType.COLORLESS], [CardType.DARK, CardType.PSYCHIC])
+    assert check_energy([CardType.PSYCHIC, CardType.COLORLESS], [CardType.PSYCHIC, CardType.DARK])
+    assert not check_energy([CardType.PSYCHIC, CardType.COLORLESS], [CardType.DARK, CardType.DARK])
+    assert not check_energy([CardType.FIRE, CardType.PSYCHIC], [CardType.FIRE, CardType.DARK])
+
+
+def test_mind_bend_is_legal_with_dark_plus_psychic():
+    munkidori = make_card("TWM-095")
+    munkidori.firstTurnPlayed = False
+    for key in ("SVE-007", "SVE-005"):
+        energy = make_card(key)
+        munkidori.attachment.append(energy)
+        munkidori.energy.extend(energy.provides)
+    state = make_state(PlayerZones(active=[munkidori]), PlayerZones(active=[_dreepy()]))
+    state.player1.firstTurn = False
+    assert [a.attack.name for a in _of(state.player1.get_actions(state), AttackAction)] == ["Mind Bend"]
+
+
+def test_deck_search_cards_are_not_offered_with_an_empty_deck():
+    hand = [make_card("PAF-091"), make_card("POR-081"), make_card("SCR-133"), _dreepy(), _dreepy()]
+    state = make_state(PlayerZones(active=[_dreepy()], hand=hand), PlayerZones(active=[_dreepy()]))
+    state.player1.firstTurn = False
+    offered = {a.source.name for a in state.player1.get_actions(state) if isinstance(a, (UseItemAction, UseSupporterAction))}
+    assert offered == set()
+    state.player1.left = [_dreepy()]
+    offered = {a.source.name for a in state.player1.get_actions(state) if isinstance(a, (UseItemAction, UseSupporterAction))}
+    assert offered == {"Ultra Ball", "Poké Pad", "Crispin"}

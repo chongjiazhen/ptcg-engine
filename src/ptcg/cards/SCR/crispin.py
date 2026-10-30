@@ -26,7 +26,7 @@ class SCR133Crispin(SupporterCard):
 
     def get_actions(self, state):
         player = current_player(state)
-        if not player.supporterPlayedTurn:
+        if not player.supporterPlayedTurn and player.left:  # nothing to search with an empty deck
             return [UseSupporterAction(state.turn, self)]
         return []
 

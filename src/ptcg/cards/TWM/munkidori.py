@@ -108,7 +108,8 @@ class TWM095Munkidori(PokemonCard):
         elif isinstance(action, UseAbilityAction):
             player = current_player(state)
 
-            my_pokemon = current_all_pokemon(state)
+            # only a Pokemon that has damage counters can be the source (cg.dll parity)
+            my_pokemon = [p for p in current_all_pokemon(state) if p.hp < type(p)().hp]
             tips = "You used Adrena-Brain. Choose 1 of your Pokémon to move damage counters from."
             source_actions = choose_card_actions(
                 player.id, player.id, 1, 1, my_pokemon, tips=tips, source=self
@@ -124,8 +125,9 @@ class TWM095Munkidori(PokemonCard):
             target_chosen = yield from reduce_choose_card_actions(target_actions, state)
             target = target_chosen[0]
 
-            # Move up to 3 damage counters (each = 10 HP)
-            counters_to_move = min(3, (source.hp // 10))
+            # Move up to 3 damage counters (each = 10 HP): counted from the damage on the
+            # source, not its remaining HP
+            counters_to_move = min(3, (type(source)().hp - source.hp) // 10)
             source.hp += counters_to_move * 10
 
             opp = opponent_player(state)
