@@ -77,8 +77,7 @@ class TWM129Drakloak(PokemonCard):
 
         for ability in self.ability:
             if (
-                not self.abilityUsed
-                and not current_player(state).onceUsedTurn.get(ability.name, False)
+                not self.abilityUsed  # per Pokemon: a second Drakloak may still use it
                 and len(current_player(state).left) >= 1
             ):
                 actions.extend([UseAbilityAction(state.turn, self, ability)])

@@ -57,7 +57,7 @@ class TEF128Dunsparce(PokemonCard):
                 {
                     "name": "Dig",
                     "damage": 30,
-                    "cost": [CardType.COLORLESS],
+                    "cost": [CardType.COLORLESS, CardType.COLORLESS],
                     "text": "Flip a coin. If heads, during your opponent's next turn, prevent all damage from and effects of attacks done to this Pokémon.",
                 }
             ),

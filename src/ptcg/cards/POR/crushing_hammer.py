@@ -24,7 +24,12 @@ class POR071CrushingHammer(ItemCard):
         )
 
     def get_actions(self, state):
-        return [UseItemAction(state.turn, self)]
+        if any(
+            any(c.superType == SuperType.ENERGY for c in p.attachment)
+            for p in opponent_all_pokemon(state)
+        ):
+            return [UseItemAction(state.turn, self)]
+        return []
 
     def reduce_action(self, action, state):
         if not isinstance(action, UseItemAction):

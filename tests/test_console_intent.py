@@ -314,8 +314,10 @@ def test_ability_round_trip_drakloak_and_munkidori():
     dark = make_card("SVE-007")
     munkidori.energy = [CardType.DARK]
     munkidori.attachment = [dark]
+    active = make_card("TWM-128")
+    active.hp -= 20  # Adrena-Brain needs a damage counter on one of your own Pokemon
     state = make_state(
-        Zones(active=[make_card("TWM-128")], bench=[drakloak, munkidori], left=[make_card("TWM-128")]),
+        Zones(active=[active], bench=[drakloak, munkidori], left=[make_card("TWM-128")]),
         Zones(active=[make_card("TWM-128")]),
     )
     actions = state.player1.get_actions(state)

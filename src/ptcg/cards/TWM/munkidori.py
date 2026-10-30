@@ -89,10 +89,10 @@ class TWM095Munkidori(PokemonCard):
                         actions.append(AttackAction(state.turn, self, attack, targets[0]))
 
         if (
-            not self.abilityUsed
-            and not player.onceUsedTurn.get(self.ability[0].name, False)
+            not self.abilityUsed  # per Pokemon: a second Munkidori may still use it
             and self._has_darkness_energy()
             and opponent_all_pokemon(state)
+            and any(p.hp < type(p)().hp for p in player.active + player.bench)
         ):
             actions.append(UseAbilityAction(state.turn, self, self.ability[0]))
 
@@ -139,4 +139,3 @@ class TWM095Munkidori(PokemonCard):
                 )
 
             self.abilityUsed = True
-            player.onceUsedTurn[self.ability[0].name] = True

@@ -48,7 +48,7 @@ class MEG127RiskyRuins(StadiumCard):
 
     def get_actions(self, state):
         player = current_player(state)
-        if self in player.hand:
+        if self in player.hand and not any(s.name == self.name for s in state.stadium):
             return [PutStadiumAction(player.id, self)]
         return []
 

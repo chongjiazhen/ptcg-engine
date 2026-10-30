@@ -196,6 +196,7 @@ class Player:
                 or isinstance(hand_card, TrainerCard)
                 and hand_card.trainerType == TrainerType.SUPPORTER
                 and not self.supporterPlayedTurn
+                and not (self.firstTurn and self.wentFirst)
             ):
                 actions.extend(hand_card.get_actions(state))
 
